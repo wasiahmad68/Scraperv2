@@ -1,0 +1,11 @@
+requests
+beautifulsoup4
+markitdown
+cloudscraper
+curl_cffi
+playwright
+playwright-stealth
+nodriver
+fastapi
+uvicorn[standard]
+psycopg2-binary

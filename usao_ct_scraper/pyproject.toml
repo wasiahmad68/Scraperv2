@@ -1,0 +1,14 @@
+[project]
+name = "usao-ct-scraper"
+version = "0.1.0"
+description = "Scraper for DOJ District of Connecticut press releases"
+requires-python = ">=3.12"
+dependencies = [
+    "playwright>=1.40",
+]
+
+[tool.setuptools.packages.find]
+include = ["usao_ct_scraper*"]
+
+[project.scripts]
+scrape = "usao_ct_scraper.scraper:main"
