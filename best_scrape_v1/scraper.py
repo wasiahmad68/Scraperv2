@@ -178,7 +178,8 @@ def validate_strategy_runtimes() -> None:
 
     if failures:
         details = "\n".join(f"- {failure}" for failure in failures)
-        raise RuntimeError(f"Scraper strategy startup validation failed:\n{details}")
+        print(f"[startup] WARNING: Some strategies failed validation:\n{details}")
+        print("[startup] Continuing with available strategies only.")
 
 # Regex matching class/id names that indicate UI boilerplate (not article content).
 # Patterns are specific enough to avoid false positives on content text.

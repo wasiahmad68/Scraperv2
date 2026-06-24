@@ -15,19 +15,25 @@ services:
       retries: 10
 
   scraper:
+    build:
+      context: ./best_scrape_v1
+      dockerfile: Dockerfile
     image: best-scraper
     restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
+      DISPLAY: ":99"
       PGHOST: db
       PGPORT: "5432"
       PGDATABASE: scraper
       PGUSER: postgres
       PGPASSWORD: example
     command: >
-      bash -c "Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &>/tmp/xvfb.log &
-      sleep 1 &&
+      bash -c "rm -f /tmp/.X99-lock /tmp/.X11-unix/X99;
+      Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &>/tmp/xvfb.log &
+      sleep 1;
+      export DISPLAY=:99;
       uvicorn api:app --host 0.0.0.0 --port 8000 --workers 10"
     depends_on:
       db:

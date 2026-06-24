@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import psycopg2
 from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
 from scraper import scrape_as_html, _html_to_markdown, validate_strategy_runtimes
 
@@ -111,6 +111,7 @@ def ping():
 def scrape(
     url: Annotated[str, Query(description="URL to scrape")],
     browser: Annotated[bool, Query(description="Use Playwright/nodriver (with JS expand) instead of lightweight HTTP strategies")] = False,
+    format: Annotated[str, Query(description="Response format: json (default), html, markdown, cleaned")] = "json",
 ):
     t0 = time.perf_counter()
     try:
@@ -153,12 +154,23 @@ def scrape(
         )
 
     assert isinstance(content, str)
+    html = content
+    markdown = _html_to_markdown(html, clean=False)
+    cleaned_markdown = _html_to_markdown(html, clean=True)
+
+    if format == "html":
+        return HTMLResponse(content=html)
+    if format == "markdown":
+        return PlainTextResponse(content=markdown)
+    if format == "cleaned":
+        return PlainTextResponse(content=cleaned_markdown)
+
     return {
         "url":              url,
         "strategy":         strategy,
-        "html":             content,
-        "markdown":         _html_to_markdown(content, clean=False),
-        "cleaned_markdown": _html_to_markdown(content, clean=True),
+        "html":             html,
+        "markdown":         markdown,
+        "cleaned_markdown": cleaned_markdown,
         "time_s":           elapsed_s,
     }
 
