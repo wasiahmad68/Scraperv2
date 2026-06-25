@@ -29,6 +29,60 @@ _STRATEGY_NAMES = {
     7: "nodriver + real Chrome",
 }
 
+# ── Proxy pool (rotating) ──────────────────────────────────────────────────
+# Fetched from Webshare API on first use; cached in-memory for one hour.
+_PROXY_USERNAME  = os.environ.get("PROXY_USERNAME", "")
+_PROXY_PASSWORD  = os.environ.get("PROXY_PASSWORD", "")
+_PROXY_TOKEN     = os.environ.get("PROXY_TOKEN", "")
+
+_proxy_pool: list[str] = []       # list of "http://ip:port"
+_proxy_pool_ts: float = 0.0       # last-fetch timestamp
+_PROXY_POOL_URL  = f"https://proxy.webshare.io/api/v2/proxy/list/download/{_PROXY_TOKEN}/-/any/sourceip/direct"
+_PROXY_CACHE_TTL = 3600           # 1 hour
+_PROXY_MAX_RETRY = 5              # give up after this many proxy failures per scrape
+
+
+def _fetch_proxy_pool() -> list[str]:
+    """Fetch proxy list from Webshare, cache it, and return."""
+    global _proxy_pool, _proxy_pool_ts
+    now = time.time()
+    if _proxy_pool and now - _proxy_pool_ts < _PROXY_CACHE_TTL:
+        return _proxy_pool
+    try:
+        r = requests.get(_PROXY_POOL_URL, timeout=15)
+        if r.status_code == 200:
+            _proxy_pool = [
+                f"http://{p.strip()}"
+                for p in r.text.strip().split("\n")
+                if p.strip()
+            ]
+            _proxy_pool_ts = now
+            print(f"[proxy] fetched {len(_proxy_pool)} proxies from Webshare")
+        else:
+            print(f"[proxy] fetch failed ({r.status_code}), using cached pool ({len(_proxy_pool)})")
+    except Exception as e:
+        print(f"[proxy] fetch error: {e}, using cached pool ({len(_proxy_pool)})")
+    return _proxy_pool
+
+
+def _rotate_proxy(failed: str | None = None) -> str | None:
+    """Return a random proxy URL with auth, optionally removing *failed* from the pool."""
+    pool = _fetch_proxy_pool()
+    if not pool:
+        return None
+    if failed:
+        base = failed.split("@", 1)[-1] if "@" in failed else failed
+        try:
+            pool.remove(base)
+            print(f"[proxy] removed dead proxy {base} ({len(pool)} remaining)")
+        except ValueError:
+            pass
+    if not pool:
+        return None
+    chosen = random.choice(pool)
+    proxy_with_auth = chosen.replace("://", f"://{_PROXY_USERNAME}:{_PROXY_PASSWORD}@")
+    return proxy_with_auth
+
 
 # ── Canvas / WebGL noise injection script ─────────────────────────────────────
 # Injects subtle pixel-level noise into canvas read-back operations so that
@@ -654,6 +708,7 @@ def _run_strategy(
     session: requests.Session,
     saved_cookies: Optional[list],
     skip_warming: bool = False,
+    proxy: bool = False,
 ) -> tuple[str | bytes, str, int] | None:
     """Run a single numbered strategy. Returns a result tuple on success, None on failure.
 
@@ -667,8 +722,17 @@ def _run_strategy(
                       be 6 or 7 (i.e. warming was done in a prior successful run).
     """
     # ── Strategy 1: Standard browser UA ──────────────────────────────────────
+    _proxy_url = None
+    if proxy:
+        _proxy_url = _rotate_proxy()
+        if _proxy_url:
+            print(f"[scrape] proxy: {_proxy_url.split('@')[-1]}")
+        else:
+            print("[scrape] proxy pool empty, falling back to direct")
+
     if strategy == 1:
-        r = session.get(url, headers=_BROWSER_HEADERS, timeout=30, allow_redirects=True)
+        r = session.get(url, headers=_BROWSER_HEADERS, timeout=30, allow_redirects=True,
+                        proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
         print(f"[scrape] strategy 1 status: {r.status_code}")
         if r.status_code == 200:
             return _resolve_response(r, 1)
@@ -676,7 +740,8 @@ def _run_strategy(
 
     # ── Strategy 2: Facebook crawler UA ──────────────────────────────────────
     if strategy == 2:
-        r = session.get(url, headers=_FACEBOOK_HEADERS, timeout=25, allow_redirects=True)
+        r = session.get(url, headers=_FACEBOOK_HEADERS, timeout=25, allow_redirects=True,
+                        proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
         print(f"[scrape] strategy 2 status: {r.status_code}")
         if r.status_code == 200:
             return _resolve_response(r, 2)
@@ -684,7 +749,8 @@ def _run_strategy(
 
     # ── Strategy 3: Googlebot UA ──────────────────────────────────────────────
     if strategy == 3:
-        r = session.get(url, headers=_GOOGLEBOT_HEADERS, timeout=30, allow_redirects=True)
+        r = session.get(url, headers=_GOOGLEBOT_HEADERS, timeout=30, allow_redirects=True,
+                        proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
         print(f"[scrape] strategy 3 status: {r.status_code}")
         if r.status_code == 200:
             return _resolve_response(r, 3)
@@ -696,7 +762,8 @@ def _run_strategy(
         cs = cloudscraper.create_scraper(
             browser={"browser": "chrome", "platform": "windows", "mobile": False}
         )
-        r = cs.get(url, timeout=30)
+        r = cs.get(url, timeout=30,
+                   proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
         print(f"[scrape] strategy 4 status: {r.status_code}")
         if r.status_code == 200:
             return _resolve_response(r, 4)
@@ -705,7 +772,8 @@ def _run_strategy(
     # ── Strategy 5: curl_cffi with real TLS fingerprint ──────────────────────
     if strategy == 5:
         from curl_cffi import requests as cffi_requests
-        r = cffi_requests.get(url, impersonate="chrome124", timeout=30)
+        r = cffi_requests.get(url, impersonate="chrome124", timeout=30,
+                              proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
         print(f"[scrape] strategy 5 status: {r.status_code}")
         if r.status_code == 200:
             return _resolve_response(r, 5)
@@ -719,10 +787,20 @@ def _run_strategy(
     if strategy == 6:
         from playwright.sync_api import sync_playwright
         from playwright_stealth import Stealth
+        _pw_proxy = None
+        if _proxy_url:
+            _parsed_pw = _urlparse(_proxy_url)
+            _pw_proxy = {
+                "server": f"{_parsed_pw.scheme}://{_parsed_pw.hostname}:{_parsed_pw.port}",
+                "username": _parsed_pw.username,
+                "password": _parsed_pw.password,
+            }
+
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 executable_path="/usr/bin/google-chrome-stable",
                 headless=False,
+                proxy=_pw_proxy,
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--disable-dev-shm-usage",
@@ -858,12 +936,16 @@ def _run_strategy(
                 f"Chrome not found at {chrome_path!r}; set CHROME_BIN"
             )
 
+        _nd_browser_args = ["--no-sandbox", "--disable-dev-shm-usage"]
+        if _proxy_url:
+            _nd_browser_args.append(f"--proxy-server={_proxy_url}")
+
         async def _fetch_with_nodriver() -> tuple[str, list]:
             browser = await uc.start(
                 browser_executable_path=chrome_path,
                 headless=False,
                 no_sandbox=True,
-                browser_args=["--no-sandbox", "--disable-dev-shm-usage"],
+                browser_args=_nd_browser_args,
             )
             try:
                 tab = await browser.get("about:blank")
@@ -1003,7 +1085,7 @@ def _run_strategy(
     raise ValueError(f"Unknown strategy: {strategy}")
 
 
-def scrape_as_html(url: str, browser: bool = False) -> tuple[str | bytes, str, int]:
+def scrape_as_html(url: str, browser: bool = False, proxy: bool = False) -> tuple[str | bytes, str, int]:
     """Fetch a URL and return (content, content_type, strategy_number).
 
     Consults the domain registry to determine the best strategy order and
@@ -1050,7 +1132,7 @@ def scrape_as_html(url: str, browser: bool = False) -> tuple[str | bytes, str, i
         print(f"[scrape] trying strategy {strategy}: {_STRATEGY_NAMES.get(strategy, '?')}")
         t0 = time.monotonic()
         try:
-            result = _run_strategy(strategy, url, session, saved_cookies, skip_warming=skip_warming)
+            result = _run_strategy(strategy, url, session, saved_cookies, skip_warming=skip_warming, proxy=proxy)
             latency_ms = (time.monotonic() - t0) * 1000
 
             if result is None:
@@ -1093,7 +1175,7 @@ def scrape_as_html(url: str, browser: bool = False) -> tuple[str | bytes, str, i
     raise RuntimeError(f"All scraping strategies failed for: {url}")
 
 
-def scrape_as_markdown(url: str, clean: bool = False, browser: bool = False) -> str:
+def scrape_as_markdown(url: str, clean: bool = False, browser: bool = False, proxy: bool = False) -> str:
     """Fetch a URL and return its content as markdown.
 
     Args:
@@ -1102,8 +1184,9 @@ def scrape_as_markdown(url: str, clean: bool = False, browser: bool = False) -> 
                  and collapse excess blank lines. Default False.
         browser: If True, use Playwright/nodriver (with JS expand support) instead
                  of lightweight HTTP strategies.
+        proxy:   If True, route requests through the configured HTTP proxy.
     """
-    html, _, _ = scrape_as_html(url, browser=browser)
+    html, _, _ = scrape_as_html(url, browser=browser, proxy=proxy)
     return _html_to_markdown(html, clean=clean)
 
 

@@ -112,10 +112,11 @@ def scrape(
     url: Annotated[str, Query(description="URL to scrape")],
     browser: Annotated[bool, Query(description="Use Playwright/nodriver (with JS expand) instead of lightweight HTTP strategies")] = False,
     format: Annotated[str, Query(description="Response format: json (default), html, markdown, cleaned")] = "json",
+    proxy: Annotated[bool, Query(description="Route through the configured HTTP proxy")] = False,
 ):
     t0 = time.perf_counter()
     try:
-        content, content_type, strategy = scrape_as_html(url, browser=browser)
+        content, content_type, strategy = scrape_as_html(url, browser=browser, proxy=proxy)
     except RuntimeError as e:
         return JSONResponse(status_code=502, content={"error": str(e)})
     elapsed_s = round(time.perf_counter() - t0, 6)
