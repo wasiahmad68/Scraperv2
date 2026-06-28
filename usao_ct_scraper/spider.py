@@ -1,10 +1,41 @@
-from urllib.parse import quote
+from urllib.parse import quote, urljoin, urlparse, parse_qs
 from uuid import uuid4
 
 import scrapy
 
 
-class UsaoPressReleasesSpider(DeltaMixin, PaginatedLinksExtractor):
+class RemoteAPIMixin:
+    """Generic mixin for spiders routing through a remote scraping API.
+
+    Handles:
+      - Building properly encoded API URLs (quote the target)
+      - Resolving relative links against the original target URL (not response.url)
+    """
+
+    API_BASE = "http://54.208.226.232:8000/scrape"
+    USE_PROXY = True
+
+    def api_url(self, target_url):
+        url = f"{self.API_BASE}?url={quote(target_url)}&format=html"
+        if self.USE_PROXY:
+            url += "&proxy=1"
+        return url
+
+    def _original_url(self, response):
+        """Extract the original target URL from the API response's query string."""
+        return parse_qs(urlparse(response.url).query).get("url", [None])[0]
+
+    def resolve_link(self, href, response):
+        """Resolve a relative/absolute href against the original target URL."""
+        if not href or href.startswith(("http://", "https://")):
+            return href
+        original = self._original_url(response)
+        if not original:
+            return href
+        return urljoin(original, href)
+
+
+class UsaoPressReleasesSpider(RemoteAPIMixin, DeltaMixin, PaginatedLinksExtractor):
     name = "usao-ct-press-releases"
     API_BASE = "http://54.208.226.232:8000/scrape"
     LISTING_URL = "https://www.justice.gov/usao-ct/pr"
@@ -34,10 +65,9 @@ class UsaoPressReleasesSpider(DeltaMixin, PaginatedLinksExtractor):
     }
 
     def start_requests(self):
-        api_url = f"{self.API_BASE}?url={self.LISTING_URL}&format=html"
-        if self.USE_PROXY:
-            api_url += "&proxy=1"
-        yield scrapy.Request(api_url, self.parse, meta={"page": 0})
+        yield scrapy.Request(
+            self.api_url(self.LISTING_URL), self.parse, meta={"page": 0}
+        )
 
     def parse(self, response):
         page = response.meta["page"]
@@ -73,9 +103,7 @@ class UsaoPressReleasesSpider(DeltaMixin, PaginatedLinksExtractor):
             title_el = article.css("h2 a")
             title = title_el.css("::text").get()
             href = title_el.attrib.get("href", "")
-            full_url = (
-                f"{self.LISTING_URL}{href}" if href.startswith("/") else href
-            )
+            full_url = self.resolve_link(href, response)
             pub_date_el = article.css("time")
             pub_date = pub_date_el.attrib.get("datetime", "")
             teaser_el = article.css("p")
@@ -93,12 +121,9 @@ class UsaoPressReleasesSpider(DeltaMixin, PaginatedLinksExtractor):
         if next_el:
             next_href = next_el.attrib.get("href", "")
             if next_href:
-                next_url = f"{self.LISTING_URL}{next_href}"
-                api_url = f"{self.API_BASE}?url={next_url}&format=html"
-                if self.USE_PROXY:
-                    api_url += "&proxy=1"
+                next_url = self.resolve_link(next_href, response)
                 yield scrapy.Request(
-                    api_url, self.parse, meta={"page": page + 1}
+                    self.api_url(next_url), self.parse, meta={"page": page + 1}
                 )
 
 

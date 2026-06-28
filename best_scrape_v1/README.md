@@ -1,4 +1,4 @@
-# Best Scraper
+# Best Scraper API
 
 A multi-strategy web scraper that bypasses Cloudflare and other anti-bot protections, exposed as a FastAPI service.
 
@@ -11,140 +11,137 @@ The scraper tries up to 7 strategies — from simple HTTP requests all the way t
 The scraper learns from every request via a **PostgreSQL-backed domain registry**:
 
 - **Per-domain strategy ordering** — the strategy that last succeeded for a domain is tried first on every subsequent request. Known-failed strategies are skipped entirely.
-- **Cookie reuse** — browser cookies harvested from strategies 6 and 7 (Playwright / nodriver) are stored and re-injected on the next visit, which can bypass Cloudflare Turnstile entirely when `cf_clearance` is still valid.
-- **Forgetting** — stale knowledge is automatically cleared so the scraper adapts when sites change their protection:
+- **Cookie reuse** — browser cookies harvested from Playwright / nodriver are stored and re-injected on the next visit.
+- **Forgetting** — stale knowledge is automatically cleared:
   - Cookies expire after 1 hour (or earlier if the cookie's own `expires` field says so).
-  - A working strategy is forgotten after 7 days of no use, triggering a fresh full sweep.
+  - A working strategy is forgotten after 7 days of no use.
   - If the known working strategy fails 3 times in a row the entire domain entry is wiped.
 
-## PostgreSQL setup
+---
 
-The registry uses the standard PostgreSQL environment variables. No extra configuration keys are required.
-
-| Variable      | Default (psql) | Description               |
-|---------------|----------------|---------------------------|
-| `PGHOST`      | `localhost`    | PostgreSQL server hostname |
-| `PGPORT`      | `5432`         | PostgreSQL server port     |
-| `PGDATABASE`  | current user   | Database name              |
-| `PGUSER`      | current user   | Database user              |
-| `PGPASSWORD`  | _(none)_       | Database password          |
-
-The `scraper_domains` table and its index are created automatically on first run.
-
-## Run with Docker
-
-### 1. Build the image
+## Quick start
 
 ```bash
-docker build -t best-scraper .
+docker compose up -d
 ```
 
-### 2. Start the API server
+The API is at `http://localhost:8000`.
 
-```bash
-docker run -p 8000:8000 --env-file .env --name scraper best-scraper
-```
+---
 
-The API is now available at `http://localhost:8000`.
+## API Endpoints
 
-### 3. Use the API
+### `GET /` — Web form
 
-#### Health check
+Opens a browser form where you can paste any URL (including those containing `?` and `&`) and click Scrape. JavaScript encodes the URL client-side before sending to the GET endpoint.
+
+### `GET /ping` — Health check
 
 ```bash
 curl http://localhost:8000/ping
 # {"status":"ok"}
 ```
 
-#### Scrape a URL
+### `GET /scrape` — Scrape a URL
 
 ```bash
-curl "http://localhost:8000/scrape?url=https://example.com"
+# Simple URL (no ? or & in target)
+curl "http://localhost:8000/scrape?url=https://example.com&format=html"
+
+# URL with query params — must be URL-encoded
+curl "http://localhost:8000/scrape?url=https%3A%2F%2Fwww.justice.gov%2Fusao%2Fpressreleases%3Fsort_by%3Dfield_date&format=html&proxy=1"
 ```
 
-The response is a JSON object:
+#### Query Parameters
 
-```json
-{
-  "url": "https://example.com",
-  "strategy": 1,
-  "html": "<html>...</html>",
-  "markdown": "# Full markdown ...",
-  "cleaned_markdown": "# Cleaned markdown (nav/footer/banners removed) ..."
-}
-```
+| Parameter | Type    | Default  | Description |
+|-----------|---------|----------|-------------|
+| `url`     | string  | required | The URL to scrape |
+| `format`  | string  | `json`   | Response format: `json`, `html`, `markdown`, `cleaned` |
+| `proxy`   | boolean | `false`  | Route through the proxy pool |
+| `browser` | boolean | `false`  | Force browser-based strategies for JS-heavy sites |
 
-### Query parameters
+#### Response formats
 
-| Parameter | Type   | Default  | Description       |
-|-----------|--------|----------|-------------------|
-| `url`     | string | required | The URL to scrape |
+- **`format=json`** (default) — Returns JSON with `html`, `markdown`, `cleaned_markdown`, and metadata
+- **`format=html`** — Returns raw HTML directly (useful for Scrapy selectors)
+- **`format=markdown`** — Returns plain text markdown
+- **`format=cleaned`** — Returns markdown with boilerplate (nav, footer, banners) removed
 
-### Interactive docs
+### `POST /scrape` — Scrape a URL (JSON body)
 
-FastAPI's auto-generated docs are available at `http://localhost:8000/docs`.
-
-### Stop the container
+For URLs containing `?` or `&` — no encoding needed, the URL goes in the JSON body.
 
 ```bash
-docker stop scraper && docker rm scraper
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://www.justice.gov/usao/pressreleases?sort_by=field_date","format":"html","proxy":true}'
 ```
 
-## Run the standalone scraper (without the API)
+From JavaScript:
+```js
+fetch("http://localhost:8000/scrape", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({url: "https://www.justice.gov/usao/pressreleases?sort_by=field_date", format: "html", proxy: true})
+}).then(r => r.text()).then(console.log)
+```
 
-Override the default command to run `scraper.py` directly:
+### `GET /docs` — Interactive Swagger docs
+
+FastAPI's auto-generated documentation with "Try it out" button for every endpoint.
+
+---
+
+## Docker Compose
+
+The `docker-compose.yml` at the project root starts both the scraper API and a PostgreSQL database:
 
 ```bash
-docker run --rm \
-  -e PGHOST=your-db-host \
-  -e PGDATABASE=scraper \
-  -e PGUSER=scraper \
-  -e PGPASSWORD=secret \
-  best-scraper bash -c \
-  "Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &>/tmp/xvfb.log & sleep 1 && python scraper.py"
+# Start
+docker compose up -d
+
+# Restart scraper only (after code changes)
+docker compose restart scraper
+
+# View logs
+docker compose logs -f scraper
+
+# Stop
+docker compose down
 ```
 
-## Run tests
+### Volume mount
 
-Test cases live in `scraper_text.json`. Mount the local directory so the container picks up the file (and any edits) without a rebuild:
+The `docker-compose.yml` mounts `./best_scrape_v1` to `/app` inside the container, so changes to `api.py` and `scraper.py` take effect immediately on restart — no image rebuild needed.
 
-```bash
-# Build once
-docker build -t best-scraper .
+---
 
-# Run tests (mount local dir so scraper_text.json and scraper.py are live)
-docker run --rm \
-  -v "$(pwd):/app" \
-  -e DISPLAY=:99 \
-  -e PGHOST=your-db-host \
-  -e PGDATABASE=scraper \
-  -e PGUSER=scraper \
-  -e PGPASSWORD=secret \
-  best-scraper \
-  bash -c "Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &>/tmp/xvfb.log & sleep 1 && python scraper.py"
-```
+## Environment variables
 
-Each test case is evaluated against expected text snippets. Results are printed per URL and a summary is shown at the end:
+| Variable | Description |
+|----------|-------------|
+| `PGHOST` | PostgreSQL server hostname |
+| `PGPORT` | PostgreSQL server port (default: `5432`) |
+| `PGDATABASE` | Database name |
+| `PGUSER` | Database user |
+| `PGPASSWORD` | Database password |
+| `PROXY_TOKEN` | Webshare API token for proxy pool |
+| `PROXY_USERNAME` | Proxy authentication username |
+| `PROXY_PASSWORD` | Proxy authentication password |
 
-```
-PASS: https://example.com
-FAIL: https://other.com
-      missing: 'expected snippet'
+The `scraper_domains` table is created automatically on first run.
 
-============================================================
-Results: 1 passed, 1 failed out of 2 total
-```
+---
 
-To run with boilerplate stripping (`clean=True`):
+## Proxy pool
 
-```bash
-docker run --rm \
-  -v "$(pwd):/app" \
-  -e DISPLAY=:99 \
-  -e PGHOST=your-db-host \
-  -e PGDATABASE=scraper \
-  -e PGUSER=scraper \
-  -e PGPASSWORD=secret \
-  best-scraper \
-  bash -c "Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &>/tmp/xvfb.log & sleep 1 && python -c \"from scraper import run_tests; run_tests('scraper_text.json', clean=True)\""
-```
+When `proxy=1` is set, the scraper fetches 500 proxies from Webshare, caches them for 1 hour, and rotates through them per strategy attempt.
+
+---
+
+## Notes
+
+- **HTTP status codes:** 502 is returned when all scraping strategies fail
+- **Scrapy integration:** Use `format=html` so Scrapy's `response.css()` selectors work on the raw HTML
+- **Rate limiting:** Set `DOWNLOAD_TIMEOUT: 120` in Scrapy settings; each scrape can take 30-60s

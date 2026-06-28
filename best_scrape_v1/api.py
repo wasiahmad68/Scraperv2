@@ -102,6 +102,40 @@ def _save_to_disk(content: bytes, filename: str) -> str:
     return file_uuid
 
 
+@app.get("/")
+def index():
+    return HTMLResponse("""
+<html><body style="font-family:sans-serif;margin:40px">
+<h2>Scraper API</h2>
+<form onsubmit="return f()">
+  <label>URL to scrape:</label><br>
+  <input id="u" type="text" size="80" style="width:100%"
+         placeholder="Paste any URL including ? and &"
+         value="https://www.justice.gov/usao/pressreleases?sort_by=field_date">
+  <br><br>
+  <label><input id="p" type="checkbox" checked> Proxy</label>
+  &nbsp;&nbsp;
+  Format:
+  <select id="fmt">
+    <option value="html">HTML</option>
+    <option value="json">JSON</option>
+    <option value="markdown">Markdown</option>
+  </select>
+  <br><br>
+  <button type="submit">Scrape</button>
+</form>
+<script>
+function f(){
+  var url = encodeURIComponent(document.getElementById('u').value);
+  var proxy = document.getElementById('p').checked ? 1 : 0;
+  var fmt = document.getElementById('fmt').value;
+  window.location.href = '/scrape?url=' + url + '&format=' + fmt + '&proxy=' + proxy;
+  return false;
+}
+</script>
+</body></html>
+""")
+
 @app.get("/ping")
 def ping():
     return {"status": "ok"}
