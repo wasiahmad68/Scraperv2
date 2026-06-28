@@ -8,10 +8,18 @@ from typing import Annotated
 from urllib.parse import urlparse
 
 import psycopg2
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from pydantic import BaseModel
 
 from scraper import scrape_as_html, _html_to_markdown, validate_strategy_runtimes
+
+
+class ScrapeRequest(BaseModel):
+    url: str
+    browser: bool = False
+    format: str = "json"
+    proxy: bool = False
 
 
 _REQUIRED_PG_VARS = ["PGHOST", "PGDATABASE", "PGUSER", "PGPASSWORD"]
@@ -141,13 +149,8 @@ def ping():
     return {"status": "ok"}
 
 
-@app.get("/scrape")
-def scrape(
-    url: Annotated[str, Query(description="URL to scrape")],
-    browser: Annotated[bool, Query(description="Use Playwright/nodriver (with JS expand) instead of lightweight HTTP strategies")] = False,
-    format: Annotated[str, Query(description="Response format: json (default), html, markdown, cleaned")] = "json",
-    proxy: Annotated[bool, Query(description="Route through the configured HTTP proxy")] = False,
-):
+def _scrape_response(url: str, browser: bool, format: str, proxy: bool):
+    """Core scrape logic — shared by GET and POST endpoints."""
     t0 = time.perf_counter()
     try:
         content, content_type, strategy = scrape_as_html(url, browser=browser, proxy=proxy)
@@ -208,6 +211,21 @@ def scrape(
         "cleaned_markdown": cleaned_markdown,
         "time_s":           elapsed_s,
     }
+
+
+@app.get("/scrape")
+def scrape(
+    url: Annotated[str, Query(description="URL to scrape")],
+    browser: Annotated[bool, Query(description="Use Playwright/nodriver (with JS expand) instead of lightweight HTTP strategies")] = False,
+    format: Annotated[str, Query(description="Response format: json (default), html, markdown, cleaned")] = "json",
+    proxy: Annotated[bool, Query(description="Route through the configured HTTP proxy")] = False,
+):
+    return _scrape_response(url, browser, format, proxy)
+
+
+@app.post("/scrape")
+def scrape_post(req: ScrapeRequest):
+    return _scrape_response(req.url, req.browser, req.format, req.proxy)
 
 
 @app.get("/download/{file_uuid}")
