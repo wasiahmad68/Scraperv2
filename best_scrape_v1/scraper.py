@@ -1085,6 +1085,23 @@ def _run_strategy(
     raise ValueError(f"Unknown strategy: {strategy}")
 
 
+def _handle_browser_result(
+    result: tuple[str | bytes, str, int] | tuple[str | bytes, str, int, list],
+    domain: str,
+    latency_ms: float,
+) -> tuple[str | bytes, str, int]:
+    """Extract content, record success, and return result for a browser strategy."""
+    content, content_type, strat = result[:3]
+    harvested = result[3] if len(result) == 4 else None
+    _registry.record_success(
+        domain, strat,
+        cookies=harvested or None,
+        latency_ms=round(latency_ms, 1),
+    )
+    print(f"[scrape] strategy {strat} succeeded ({latency_ms:.0f} ms)")
+    return content, content_type, strat
+
+
 def scrape_as_html(url: str, browser: bool = False, proxy: bool = False) -> tuple[str | bytes, str, int]:
     """Fetch a URL and return (content, content_type, strategy_number).
 
@@ -1137,6 +1154,16 @@ def scrape_as_html(url: str, browser: bool = False, proxy: bool = False) -> tupl
 
             if result is None:
                 print(f"[scrape] strategy {strategy} rejected")
+                # ── Auto-retry browser strategy with proxy ──────────────────
+                if not proxy and strategy >= 6:
+                    print(f"[scrape] retrying strategy {strategy} with proxy")
+                    _registry.record_failure(domain, strategy)
+                    t0 = time.monotonic()
+                    result = _run_strategy(strategy, url, session, saved_cookies, skip_warming=skip_warming, proxy=True)
+                    latency_ms = (time.monotonic() - t0) * 1000
+                    if result is not None:
+                        return _handle_browser_result(result, domain, latency_ms)
+                    print(f"[scrape] strategy {strategy} also rejected with proxy")
                 _registry.record_failure(domain, strategy)
                 continue
 
@@ -1170,6 +1197,18 @@ def scrape_as_html(url: str, browser: bool = False, proxy: bool = False) -> tupl
         except Exception as e:
             latency_ms = (time.monotonic() - t0) * 1000
             print(f"[scrape] strategy {strategy} failed: {e}")
+            # ── Auto-retry browser strategy with proxy ──────────────────────
+            if not proxy and strategy >= 6:
+                print(f"[scrape] retrying strategy {strategy} with proxy")
+                t0 = time.monotonic()
+                try:
+                    result = _run_strategy(strategy, url, session, saved_cookies, skip_warming=skip_warming, proxy=True)
+                    latency_ms = (time.monotonic() - t0) * 1000
+                    if result is not None:
+                        return _handle_browser_result(result, domain, latency_ms)
+                except Exception as e2:
+                    print(f"[scrape] strategy {strategy} also failed with proxy: {e2}")
+                print(f"[scrape] strategy {strategy} also failed with proxy")
             _registry.record_failure(domain, strategy)
 
     raise RuntimeError(f"All scraping strategies failed for: {url}")

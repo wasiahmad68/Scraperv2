@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from pydantic import BaseModel
 
 from scraper import scrape_as_html, _html_to_markdown, validate_strategy_runtimes
+from domain_registry import registry
 
 
 class ScrapeRequest(BaseModel):
@@ -20,6 +21,7 @@ class ScrapeRequest(BaseModel):
     browser: bool = False
     format: str = "json"
     proxy: bool = False
+    refresh: bool = False
 
 
 _REQUIRED_PG_VARS = ["PGHOST", "PGDATABASE", "PGUSER", "PGPASSWORD"]
@@ -149,9 +151,13 @@ def ping():
     return {"status": "ok"}
 
 
-def _scrape_response(url: str, browser: bool, format: str, proxy: bool):
+def _scrape_response(url: str, browser: bool, format: str, proxy: bool, refresh: bool = False):
     """Core scrape logic — shared by GET and POST endpoints."""
     t0 = time.perf_counter()
+    if refresh:
+        domain = urlparse(url).netloc
+        registry.delete(domain)
+        print(f"[api] {domain}: registry entry deleted (refresh=true)")
     try:
         content, content_type, strategy = scrape_as_html(url, browser=browser, proxy=proxy)
     except RuntimeError as e:
@@ -219,13 +225,14 @@ def scrape(
     browser: Annotated[bool, Query(description="Use Playwright/nodriver (with JS expand) instead of lightweight HTTP strategies")] = False,
     format: Annotated[str, Query(description="Response format: json (default), html, markdown, cleaned")] = "json",
     proxy: Annotated[bool, Query(description="Route through the configured HTTP proxy")] = False,
+    refresh: Annotated[bool, Query(description="Delete cached strategy so all 7 strategies are tried fresh")] = False,
 ):
-    return _scrape_response(url, browser, format, proxy)
+    return _scrape_response(url, browser, format, proxy, refresh)
 
 
 @app.post("/scrape")
 def scrape_post(req: ScrapeRequest):
-    return _scrape_response(req.url, req.browser, req.format, req.proxy)
+    return _scrape_response(req.url, req.browser, req.format, req.proxy, req.refresh)
 
 
 @app.get("/download/{file_uuid}")

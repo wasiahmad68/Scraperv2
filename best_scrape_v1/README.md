@@ -60,6 +60,7 @@ curl "http://localhost:8000/scrape?url=https%3A%2F%2Fwww.justice.gov%2Fusao%2Fpr
 | `format`  | string  | `json`   | Response format: `json`, `html`, `markdown`, `cleaned` |
 | `proxy`   | boolean | `false`  | Route through the proxy pool |
 | `browser` | boolean | `false`  | Force browser-based strategies for JS-heavy sites |
+| `refresh` | boolean | `false`  | Delete cached strategy for this domain so all 7 strategies are tried fresh |
 
 #### Response formats
 
@@ -75,7 +76,7 @@ For URLs containing `?` or `&` — no encoding needed, the URL goes in the JSON 
 ```bash
 curl -X POST http://localhost:8000/scrape \
   -H "Content-Type: application/json" \
-  -d '{"url":"https://www.justice.gov/usao/pressreleases?sort_by=field_date","format":"html","proxy":true}'
+  -d '{"url":"https://www.justice.gov/usao/pressreleases?sort_by=field_date","format":"html","proxy":true,"refresh":true}'
 ```
 
 From JavaScript:
@@ -83,7 +84,7 @@ From JavaScript:
 fetch("http://localhost:8000/scrape", {
   method: "POST",
   headers: {"Content-Type": "application/json"},
-  body: JSON.stringify({url: "https://www.justice.gov/usao/pressreleases?sort_by=field_date", format: "html", proxy: true})
+  body: JSON.stringify({url: "https://www.justice.gov/usao/pressreleases?sort_by=field_date", format: "html", proxy: true, refresh: true})
 }).then(r => r.text()).then(console.log)
 ```
 
