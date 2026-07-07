@@ -6,10 +6,12 @@ import os
 import requests
 import re
 import json
+import subprocess
 import sys
 import time
 import random
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Optional
 from urllib.parse import urlparse as _urlparse
 from bs4 import BeautifulSoup
@@ -82,6 +84,42 @@ def _rotate_proxy(failed: str | None = None) -> str | None:
     chosen = random.choice(pool)
     proxy_with_auth = chosen.replace("://", f"://{_PROXY_USERNAME}:{_PROXY_PASSWORD}@")
     return proxy_with_auth
+
+
+# ── Chrome cleanup & timeouts ──────────────────────────────────────────────────
+
+_STRATEGY_TIMEOUTS = {1: 30, 2: 30, 3: 30, 4: 30, 5: 30, 6: 90, 7: 90}
+
+
+def _kill_orphan_chrome() -> None:
+    """Force-kill leftover Chrome/Chromium processes to prevent memory exhaustion."""
+    try:
+        subprocess.run(
+            ["pkill", "-f", "chrome"],
+            capture_output=True,
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+
+def _run_strategy_with_timeout(
+    strategy: int, url: str, session, saved_cookies, skip_warming: bool, proxy: bool,
+) -> tuple | None:
+    """Run a strategy with a per-strategy timeout."""
+    timeout = _STRATEGY_TIMEOUTS.get(strategy, 60)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(
+            _run_strategy, strategy, url, session, saved_cookies, skip_warming, proxy,
+        )
+        try:
+            return future.result(timeout=timeout)
+        except FutureTimeoutError:
+            print(f"[scrape] strategy {strategy} timed out after {timeout}s")
+            return None
+        except Exception as e:
+            print(f"[scrape] strategy {strategy} failed: {e}")
+            return None
 
 
 # ── Canvas / WebGL noise injection script ─────────────────────────────────────
@@ -1123,6 +1161,7 @@ def scrape_as_html(url: str, browser: bool = False, proxy: bool = False) -> tupl
     when it points to a file (PDF, image, etc.).  content_type is the MIME type
     taken directly from the winning response's Content-Type header.
     """
+    _kill_orphan_chrome()
     session = requests.Session()
     print(f"[scrape] {url}")
 
@@ -1132,11 +1171,8 @@ def scrape_as_html(url: str, browser: bool = False, proxy: bool = False) -> tupl
     saved_cookies = _entry.get("cookies")  # already expiry-checked by get()
 
     if browser:
-        # Only use browser-based strategies (6 = Playwright, 7 = nodriver)
         order = [s for s in order if s >= 6] or [6, 7]
         print(f"[registry] {domain}: browser mode forced, order = {order}")
-    # Skip homepage warming when the domain's known working strategy is already a
-    # browser strategy (6 or 7) — warming was done in a previous successful run.
     skip_warming = _entry.get("working_strategy") in (6, 7)
 
     if saved_cookies:
@@ -1153,25 +1189,27 @@ def scrape_as_html(url: str, browser: bool = False, proxy: bool = False) -> tupl
         print(f"[scrape] trying strategy {strategy}: {_STRATEGY_NAMES.get(strategy, '?')}")
         t0 = time.monotonic()
         try:
-            result = _run_strategy(strategy, url, session, saved_cookies, skip_warming=skip_warming, proxy=proxy)
+            result = _run_strategy_with_timeout(strategy, url, session, saved_cookies, skip_warming=skip_warming, proxy=proxy)
             latency_ms = (time.monotonic() - t0) * 1000
+
+            if strategy >= 6:
+                _kill_orphan_chrome()
 
             if result is None:
                 print(f"[scrape] strategy {strategy} rejected")
-                # ── Auto-retry browser strategy with proxy ──────────────────
                 if not proxy and strategy >= 6:
                     print(f"[scrape] retrying strategy {strategy} with proxy")
                     _registry.record_failure(domain, strategy)
                     t0 = time.monotonic()
-                    result = _run_strategy(strategy, url, session, saved_cookies, skip_warming=skip_warming, proxy=True)
+                    result = _run_strategy_with_timeout(strategy, url, session, saved_cookies, skip_warming=skip_warming, proxy=True)
                     latency_ms = (time.monotonic() - t0) * 1000
+                    _kill_orphan_chrome()
                     if result is not None:
                         return _handle_browser_result(result, domain, latency_ms)
                     print(f"[scrape] strategy {strategy} also rejected with proxy")
                 _registry.record_failure(domain, strategy)
                 continue
 
-            # Strategies 6 & 7 return a 4-tuple with harvested cookies
             if len(result) == 4:
                 content, content_type, strat, harvested = result
                 _registry.record_success(
@@ -1184,7 +1222,6 @@ def scrape_as_html(url: str, browser: bool = False, proxy: bool = False) -> tupl
 
             content, content_type, strat = result
 
-            # ── Auto-upgrade to browser if content looks truncated ──────────
             if strat < 6 and isinstance(content, str) and content_type == "text/html":
                 plain = _html_to_text(content)
                 if _has_expandable_content(content, plain):
@@ -1201,13 +1238,15 @@ def scrape_as_html(url: str, browser: bool = False, proxy: bool = False) -> tupl
         except Exception as e:
             latency_ms = (time.monotonic() - t0) * 1000
             print(f"[scrape] strategy {strategy} failed: {e}")
-            # ── Auto-retry browser strategy with proxy ──────────────────────
+            if strategy >= 6:
+                _kill_orphan_chrome()
             if not proxy and strategy >= 6:
                 print(f"[scrape] retrying strategy {strategy} with proxy")
                 t0 = time.monotonic()
                 try:
-                    result = _run_strategy(strategy, url, session, saved_cookies, skip_warming=skip_warming, proxy=True)
+                    result = _run_strategy_with_timeout(strategy, url, session, saved_cookies, skip_warming=skip_warming, proxy=True)
                     latency_ms = (time.monotonic() - t0) * 1000
+                    _kill_orphan_chrome()
                     if result is not None:
                         return _handle_browser_result(result, domain, latency_ms)
                 except Exception as e2:

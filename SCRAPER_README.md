@@ -18,19 +18,51 @@ The API is at `http://localhost:8000`.
 
 ### API
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /ping` | Health check |
-| `GET /scrape?url=<URL>&browser=false` | Scrape a URL, returns JSON with `html`, `markdown`, `cleaned_markdown` |
-| `GET /docs` | Interactive Swagger docs |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `GET /ping` | GET | Health check |
+| `GET /scrape` | GET | Scrape a URL |
+| `POST /scrape` | POST | Scrape a URL (preferred — avoids URL encoding issues) |
+| `GET /docs` | GET | Interactive Swagger docs |
 
-**Parameters:**
-- `url` (required) — the page to scrape
-- `browser` (optional, default `false`) — force browser-based strategies (Playwright/nodriver) for JS-heavy sites
+**Parameters (GET query / POST JSON body):**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `url` | string | — | Target URL to scrape **(required)** |
+| `format` | string | `"json"` | Response format: `json`, `html`, `markdown`, `cleaned` |
+| `proxy` | bool | `false` | Route through Webshare rotating proxy pool |
+| `browser` | bool | `false` | Force browser-based strategies (Playwright/nodriver) for JS-heavy sites |
+| `refresh` | bool | `false` | Delete cached strategy registry for this domain — forces all 7 strategies to be tried fresh |
+
+**Examples:**
 
 ```bash
-curl "http://localhost:8000/scrape?url=https://example.com&browser=true"
+# GET — returns JSON with html + markdown
+curl "http://localhost:8000/scrape?url=https://example.com&proxy=true"
+
+# POST — returns raw HTML
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com","format":"html","proxy":true}'
+
+# Force browser + refresh cache
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com","format":"html","browser":true,"refresh":true}'
 ```
+
+### Robustness
+
+The scraper includes safeguards to prevent resource exhaustion across sequential requests:
+
+| Feature | Description |
+|---------|-------------|
+| **Chrome cleanup** | Orphan `chrome` processes are force-killed after every browser strategy (6-7) and at the start of each `scrape_as_html` call, preventing memory leaks from accumulating |
+| **Per-strategy timeout** | Each strategy runs with a timeout: 30s for HTTP strategies (1-5), 90s for browser strategies (6-7). A hung strategy doesn't block the remaining strategies |
+| **Auto-retry with proxy** | If a browser strategy fails without proxy, it's retried once with proxy before moving to the next strategy |
+| **Expandable content detection** | If HTTP content looks truncated ("read more" buttons), the scraper auto-upgrades to browser strategies |
+| **Domain registry** | PostgreSQL-backed cache remembers the winning strategy per domain, reuses harvested cookies, and skips failed strategies on subsequent calls |
 
 ### Tests
 

@@ -23,6 +23,12 @@ from psycopg2.extras import execute_values
 # import threading
 from collections import deque
 
+import json
+from urllib.parse import urljoin, urlparse
+
+import scrapy
+
+
 class SitemapLinksExtractor(Spider):
     name = "www.justice.gov"
     start_urls = ["https://www.justice.gov/sitemap.xml"]
@@ -854,3 +860,77 @@ class WindowedDeltaMixin(DeltaModeMixin):
             yield obj
 
 
+class APIMixin:
+    """
+    Mixin that routes all Scrapy requests through a remote scraping API.
+    Place FIRST in the MRO: class MySpider(APIMixin, SeparateLinkTitleColumnsMixin, ...)
+    """
+    use_api = True
+    api_base = "http://14.195.188.139:8000/scrape"
+    api_proxy = 1          # passed as "proxy" in POST body
+    api_browser = None     # passed as "browser" if set
+    api_format = "html"
+    api_refresh = False
+
+
+    # ── Class-level overrides ────────────────────────────────────────────
+    handle_httpstatus_list = [502, 503, 504]
+    extra_headers = {}
+    proxy_off = True
+
+    # ── Request helpers ──────────────────────────────────────────────────
+
+    def start_requests(self):
+        start_urls = self.settings.get("START_URLS")
+        start_urls = [start_urls] if start_urls else getattr(self, "start_urls", [])
+        for url in start_urls:
+            yield self._api_request(url, callback=self.parse)
+
+    def _api_request(self, url, callback=None, **kwargs):
+        body = {
+            "url": url,
+            "format": self.api_format,
+            "proxy": self.api_proxy,
+            "refresh": self.api_refresh,
+
+        }
+        if self.api_browser is not None:
+            body["browser"] = self.api_browser
+
+        cb = callback or self.parse
+        return scrapy.Request(
+            url=self.api_base,
+            method="POST",
+            body=json.dumps(body),
+            headers={"Content-Type": "application/json"},
+            callback=cb,
+            meta={"original_url": url, **kwargs.pop("meta", {})},
+            **kwargs,
+        )
+
+    def resolve_link(self, response, url):
+        original_url = response.meta.get("original_url")
+        if not original_url:
+            return url
+        api_host = urlparse(self.api_base).netloc
+        parsed = urlparse(url)
+        if parsed.netloc == api_host:
+            # URL was already resolved against API → strip it
+            path = parsed.path
+            if parsed.query:
+                path += "?" + parsed.query
+            return urljoin(original_url, path)
+        return urljoin(original_url, url)
+
+    # ── Override extraction methods to resolve URLs ──────────────────────
+
+    def get_article_links(self, response):
+        for item in super().get_article_links(response):
+            item["url"] = self.resolve_link(response, item["url"])
+            yield item
+
+    def get_next_page_link(self, response):
+        link = super().get_next_page_link(response)
+        if link:
+            return self.resolve_link(response, link)
+        return None
