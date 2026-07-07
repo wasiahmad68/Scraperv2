@@ -1019,7 +1019,7 @@ def _run_strategy(
                             "})()"
                             ")"
                         )
-                        if rect_json and rect_json != "null":
+                        if isinstance(rect_json, str) and rect_json != "null":
                             rect = json.loads(rect_json)
                             cb_x = rect["x"] + 20
                             cb_y = rect["y"] + rect["h"] / 2
@@ -1049,7 +1049,7 @@ def _run_strategy(
                         "    ? f.contentDocument.documentElement.outerHTML : ''; } catch(e) { return ''; } })()"
                         "})))"
                     )
-                    if _iframes_js:
+                    if isinstance(_iframes_js, str):
                         for _fi in json.loads(_iframes_js):
                             if _fi.get("html"):
                                 if _fi.get("src"):
@@ -1065,13 +1065,17 @@ def _run_strategy(
                 print(f"[scrape] nodriver: inlined {_inlined_count} iframe(s)")
 
                 # Harvest cookies for registry storage
-                _cookies_js = await tab.evaluate(
-                    "JSON.stringify(document.cookie.split('; ').map(c => {"
-                    "  const [name, ...rest] = c.split('=');"
-                    "  return {name, value: rest.join('=')};"
-                    "}))"
-                )
-                _harvested = json.loads(_cookies_js) if _cookies_js else []
+                try:
+                    _cookies_js = await tab.evaluate(
+                        "JSON.stringify(document.cookie.split('; ').map(c => {"
+                        "  const [name, ...rest] = c.split('=');"
+                        "  return {name, value: rest.join('=')};"
+                        "}))"
+                    )
+                    _harvested = json.loads(_cookies_js) if isinstance(_cookies_js, str) else []
+                except Exception as _che:
+                    print(f"[scrape] nodriver: cookie harvest failed: {_che}")
+                    _harvested = []
                 return _inlined_html, _harvested
             finally:
                 browser.stop()

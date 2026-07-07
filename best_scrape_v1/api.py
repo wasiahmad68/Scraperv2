@@ -123,25 +123,31 @@ def index():
          placeholder="Paste any URL including ? and &"
          value="https://www.justice.gov/usao/pressreleases?sort_by=field_date">
   <br><br>
-  <label><input id="p" type="checkbox" checked> Proxy</label>
-  &nbsp;&nbsp;
-  Format:
-  <select id="fmt">
-    <option value="html">HTML</option>
-    <option value="json">JSON</option>
-    <option value="markdown">Markdown</option>
-  </select>
-  <br><br>
-  <button type="submit">Scrape</button>
-</form>
-<script>
-function f(){
-  var url = encodeURIComponent(document.getElementById('u').value);
-  var proxy = document.getElementById('p').checked ? 1 : 0;
-  var fmt = document.getElementById('fmt').value;
-  window.location.href = '/scrape?url=' + url + '&format=' + fmt + '&proxy=' + proxy;
-  return false;
-}
+   <label><input id="p" type="checkbox" checked> Proxy</label>
+   &nbsp;&nbsp;
+   <label><input id="b" type="checkbox"> Browser</label>
+   &nbsp;&nbsp;
+   <label><input id="r" type="checkbox"> Refresh</label>
+   <br><br>
+   Format:
+   <select id="fmt">
+     <option value="html">HTML</option>
+     <option value="json">JSON</option>
+     <option value="markdown">Markdown</option>
+   </select>
+   <br><br>
+   <button type="submit">Scrape</button>
+ </form>
+ <script>
+ function f(){
+   var url = encodeURIComponent(document.getElementById('u').value);
+   var proxy = document.getElementById('p').checked ? 1 : 0;
+   var browser = document.getElementById('b').checked ? 1 : 0;
+   var refresh = document.getElementById('r').checked ? 1 : 0;
+   var fmt = document.getElementById('fmt').value;
+   window.location.href = '/scrape?url=' + url + '&format=' + fmt + '&proxy=' + proxy + '&browser=' + browser + '&refresh=' + refresh;
+   return false;
+ }
 </script>
 </body></html>
 """)
