@@ -860,6 +860,25 @@ class WindowedDeltaMixin(DeltaModeMixin):
             yield obj
 
 
+class APIRoutingMiddleware:
+    """Transparently routes Scrapy Requests through the scraping API.
+
+    APIMixin creates Requests with the *original* target URL so that Scrapy's
+    stats, signals, and extensions always see the real URL.  This middleware
+    rewrites the request back to the API endpoint just before it is sent over
+    the wire.
+    """
+    def process_request(self, request, spider):
+        api_base = request.meta.pop("_api_base", None)
+        if api_base:
+            request._url = api_base
+            request.method = "POST"
+            body = request.meta.pop("_api_body", None)
+            if body:
+                request.body = json.dumps(body)
+            request.headers["Content-Type"] = "application/json"
+
+
 class APIMixin:
     """
     Mixin that routes all Scrapy requests through a remote scraping API.
@@ -877,6 +896,15 @@ class APIMixin:
     handle_httpstatus_list = [502, 503, 504]
     extra_headers = {}
     proxy_off = True
+
+    # ── Middleware registration ────────────────────────────────────────────
+
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        mw = crawler.settings.getdict("DOWNLOADER_MIDDLEWARES")
+        mw["usao_ct_scraper.base_spider.APIRoutingMiddleware"] = 50
+        crawler.settings.set("DOWNLOADER_MIDDLEWARES", mw, priority="spider")
+        return super(APIMixin, cls).from_crawler(crawler, *args, **kwargs)
 
     # ── Request helpers ──────────────────────────────────────────────────
 
@@ -901,13 +929,13 @@ class APIMixin:
         def _api_wrapper(response):
             response._url = response.meta.get("original_url", response._url)
             return cb(response)
+
+        meta = {"original_url": url, "_api_base": self.api_base, "_api_body": body}
+        meta.update(kwargs.pop("meta", {}))
         return scrapy.Request(
-            url=self.api_base,
-            method="POST",
-            body=json.dumps(body),
-            headers={"Content-Type": "application/json"},
+            url=url,
             callback=_api_wrapper,
-            meta={"original_url": url, **kwargs.pop("meta", {})},
+            meta=meta,
             **kwargs,
         )
 
