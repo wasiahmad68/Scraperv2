@@ -106,8 +106,10 @@ def _kill_orphan_chrome() -> None:
 def _run_strategy_with_timeout(
     strategy: int, url: str, session, saved_cookies, skip_warming: bool, proxy: bool,
 ) -> tuple | None:
-    """Run a strategy with a per-strategy timeout."""
+    """Run a strategy with a per-strategy timeout, multiplied for proxy retries."""
     timeout = _STRATEGY_TIMEOUTS.get(strategy, 60)
+    if proxy:
+        timeout *= _PROXY_MAX_RETRY
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(
             _run_strategy, strategy, url, session, saved_cookies, skip_warming, proxy,
@@ -761,60 +763,114 @@ def _run_strategy(
     """
     # ── Strategy 1: Standard browser UA ──────────────────────────────────────
     _proxy_url = None
-    if proxy:
-        _proxy_url = _rotate_proxy()
-        if _proxy_url:
-            print(f"[scrape] proxy: {_proxy_url.split('@')[-1]}")
-        else:
-            print("[scrape] proxy pool empty, falling back to direct")
 
     if strategy == 1:
-        r = session.get(url, headers=_BROWSER_HEADERS, timeout=30, allow_redirects=True,
-                        proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
-        print(f"[scrape] strategy 1 status: {r.status_code}")
-        if r.status_code == 200:
-            return _resolve_response(r, 1)
+        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+            if proxy:
+                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _proxy_url:
+                    print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
+                elif _attempt == 0:
+                    print("[scrape] proxy pool empty, falling back to direct")
+                else:
+                    break
+            try:
+                r = session.get(url, headers=_BROWSER_HEADERS, timeout=30, allow_redirects=True,
+                                proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
+                print(f"[scrape] strategy 1 status: {r.status_code}")
+                if r.status_code == 200:
+                    return _resolve_response(r, 1)
+            except Exception as e:
+                print(f"[scrape] strategy 1 attempt {_attempt+1} failed: {e}")
         return None
 
     # ── Strategy 2: Facebook crawler UA ──────────────────────────────────────
     if strategy == 2:
-        r = session.get(url, headers=_FACEBOOK_HEADERS, timeout=25, allow_redirects=True,
-                        proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
-        print(f"[scrape] strategy 2 status: {r.status_code}")
-        if r.status_code == 200:
-            return _resolve_response(r, 2)
+        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+            if proxy:
+                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _proxy_url:
+                    print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
+                elif _attempt == 0:
+                    print("[scrape] proxy pool empty, falling back to direct")
+                else:
+                    break
+            try:
+                r = session.get(url, headers=_FACEBOOK_HEADERS, timeout=25, allow_redirects=True,
+                                proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
+                print(f"[scrape] strategy 2 status: {r.status_code}")
+                if r.status_code == 200:
+                    return _resolve_response(r, 2)
+            except Exception as e:
+                print(f"[scrape] strategy 2 attempt {_attempt+1} failed: {e}")
         return None
 
     # ── Strategy 3: Googlebot UA ──────────────────────────────────────────────
     if strategy == 3:
-        r = session.get(url, headers=_GOOGLEBOT_HEADERS, timeout=30, allow_redirects=True,
-                        proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
-        print(f"[scrape] strategy 3 status: {r.status_code}")
-        if r.status_code == 200:
-            return _resolve_response(r, 3)
+        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+            if proxy:
+                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _proxy_url:
+                    print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
+                elif _attempt == 0:
+                    print("[scrape] proxy pool empty, falling back to direct")
+                else:
+                    break
+            try:
+                r = session.get(url, headers=_GOOGLEBOT_HEADERS, timeout=30, allow_redirects=True,
+                                proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
+                print(f"[scrape] strategy 3 status: {r.status_code}")
+                if r.status_code == 200:
+                    return _resolve_response(r, 3)
+            except Exception as e:
+                print(f"[scrape] strategy 3 attempt {_attempt+1} failed: {e}")
         return None
 
     # ── Strategy 4: cloudscraper (Cloudflare JS challenges) ──────────────────
     if strategy == 4:
-        import cloudscraper
-        cs = cloudscraper.create_scraper(
-            browser={"browser": "chrome", "platform": "windows", "mobile": False}
-        )
-        r = cs.get(url, timeout=30,
-                   proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
-        print(f"[scrape] strategy 4 status: {r.status_code}")
-        if r.status_code == 200:
-            return _resolve_response(r, 4)
+        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+            if proxy:
+                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _proxy_url:
+                    print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
+                elif _attempt == 0:
+                    print("[scrape] proxy pool empty, falling back to direct")
+                else:
+                    break
+            try:
+                import cloudscraper
+                cs = cloudscraper.create_scraper(
+                    browser={"browser": "chrome", "platform": "windows", "mobile": False}
+                )
+                r = cs.get(url, timeout=30,
+                           proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
+                print(f"[scrape] strategy 4 status: {r.status_code}")
+                if r.status_code == 200:
+                    return _resolve_response(r, 4)
+            except Exception as e:
+                print(f"[scrape] strategy 4 attempt {_attempt+1} failed: {e}")
         return None
 
     # ── Strategy 5: curl_cffi with real TLS fingerprint ──────────────────────
     if strategy == 5:
-        from curl_cffi import requests as cffi_requests
-        r = cffi_requests.get(url, impersonate="chrome124", timeout=30,
-                              proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
-        print(f"[scrape] strategy 5 status: {r.status_code}")
-        if r.status_code == 200:
-            return _resolve_response(r, 5)
+        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+            if proxy:
+                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _proxy_url:
+                    print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
+                elif _attempt == 0:
+                    print("[scrape] proxy pool empty, falling back to direct")
+                else:
+                    break
+            try:
+                from curl_cffi import requests as cffi_requests
+                r = cffi_requests.get(url, impersonate="chrome124", timeout=30,
+                                      proxies={"http": _proxy_url, "https": _proxy_url} if _proxy_url else None)
+                print(f"[scrape] strategy 5 status: {r.status_code}")
+                if r.status_code == 200:
+                    return _resolve_response(r, 5)
+            except Exception as e:
+                print(f"[scrape] strategy 5 attempt {_attempt+1} failed: {e}")
         return None
 
     # ── Strategy 6: Playwright + stealth + canvas noise + cookie warming ──────
@@ -823,305 +879,339 @@ def _run_strategy(
     # Saved cookies from a previous successful session are injected up-front,
     # which can bypass CF Turnstile entirely when cf_clearance is still valid.
     if strategy == 6:
-        from playwright.sync_api import sync_playwright
-        from playwright_stealth import Stealth
-        _pw_proxy = None
-        if _proxy_url:
-            _parsed_pw = _urlparse(_proxy_url)
-            _pw_proxy = {
-                "server": f"{_parsed_pw.scheme}://{_parsed_pw.hostname}:{_parsed_pw.port}",
-                "username": _parsed_pw.username,
-                "password": _parsed_pw.password,
-            }
-
-        with sync_playwright() as p:
-            browser = p.chromium.launch(
-                executable_path="/usr/bin/google-chrome-stable",
-                headless=False,
-                proxy=_pw_proxy,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-dev-shm-usage",
-                    "--no-sandbox",
-                ],
-            )
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 800},
-                locale="en-US",
-                timezone_id="America/New_York",
-                extra_http_headers={
-                    "sec-ch-ua": (
-                        '"Google Chrome";v="124", "Chromium";v="124", '
-                        '"Not-A.Brand";v="99"'
-                    ),
-                },
-            )
-            context.add_init_script(_CANVAS_NOISE_JS)
-
-            # Inject saved cookies before any navigation
-            if saved_cookies:
-                try:
-                    context.add_cookies(saved_cookies)
-                    print(f"[scrape] strategy 6: injected {len(saved_cookies)} saved cookie(s)")
-                except Exception as _ce:
-                    print(f"[scrape] strategy 6: cookie injection failed: {_ce}")
-
-            page = context.new_page()
-            Stealth().apply_stealth_sync(page)
-
-            # Capture the initial HTTP response body before JavaScript modifies
-            # the DOM.  Some sites (e.g. The Guardian's DCR framework) serve the
-            # correct article server-side but JS then overwrites it with a
-            # different version.  We keep both and pick the one with more text.
-            _initial_response_body: list[bytes] = []
-
-            def _on_response(resp):
-                if not _initial_response_body and resp.request and resp.request.url == url:
-                    try:
-                        _body = resp.body()
-                        _initial_response_body.append(_body)
-                        print(f"[scrape] strategy 6: captured SSR response "
-                              f"({len(_body)} bytes, "
-                              f"starts with: {_body[:80]})")
-                    except Exception as e:
-                        print(f"[scrape] strategy 6: SSR capture failed: {e}")
-
-            page.on("response", _on_response)
-
-            _parsed  = _urlparse(url)
-            _homepage = f"{_parsed.scheme}://{_parsed.netloc}/"
-
-            # Browser strategies handle CF natively (stealth, canvas noise,
-            # checkbox click).  Homepage warming is not needed and can break
-            # session-based content routing (e.g. The Guardian serves wrong
-            # article version after a homepage visit).
-            print(f"[scrape] strategy 6: warming skipped (native CF bypass)")
-
-            page.goto(url, timeout=60000, wait_until="domcontentloaded")
-            time.sleep(4)
-
-            if _click_cf_checkbox(page):
-                deadline = time.time() + 30
-                while time.time() < deadline:
-                    time.sleep(2)
-                    if "just a moment" not in page.title().lower():
-                        print("[scrape] CF challenge cleared")
-                        break
+        _pw_result = None
+        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+            if proxy:
+                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _proxy_url:
+                    print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
+                elif _attempt == 0:
+                    print("[scrape] proxy pool empty, falling back to direct")
                 else:
-                    print("[scrape] CF challenge did not clear within 30 s")
-
+                    break
             try:
-                page.wait_for_load_state("networkidle", timeout=20000)
+                from playwright.sync_api import sync_playwright
+                from playwright_stealth import Stealth
+                _pw_proxy = None
+                if _proxy_url:
+                    _parsed_pw = _urlparse(_proxy_url)
+                    _pw_proxy = {
+                        "server": f"{_parsed_pw.scheme}://{_parsed_pw.hostname}:{_parsed_pw.port}",
+                        "username": _parsed_pw.username,
+                        "password": _parsed_pw.password,
+                    }
+
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(
+                        executable_path="/usr/bin/google-chrome-stable",
+                        headless=False,
+                        proxy=_pw_proxy,
+                        args=[
+                            "--disable-blink-features=AutomationControlled",
+                            "--disable-dev-shm-usage",
+                            "--no-sandbox",
+                        ],
+                    )
+                    context = browser.new_context(
+                        user_agent=(
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/124.0.0.0 Safari/537.36"
+                        ),
+                        viewport={"width": 1280, "height": 800},
+                        locale="en-US",
+                        timezone_id="America/New_York",
+                        extra_http_headers={
+                            "sec-ch-ua": (
+                                '"Google Chrome";v="124", "Chromium";v="124", '
+                                '"Not-A.Brand";v="99"'
+                            ),
+                        },
+                    )
+                    context.add_init_script(_CANVAS_NOISE_JS)
+
+                    # Inject saved cookies before any navigation
+                    if saved_cookies:
+                        try:
+                            context.add_cookies(saved_cookies)
+                            print(f"[scrape] strategy 6: injected {len(saved_cookies)} saved cookie(s)")
+                        except Exception as _ce:
+                            print(f"[scrape] strategy 6: cookie injection failed: {_ce}")
+
+                    page = context.new_page()
+                    Stealth().apply_stealth_sync(page)
+
+                    # Capture the initial HTTP response body before JavaScript modifies
+                    # the DOM.  Some sites (e.g. The Guardian's DCR framework) serve the
+                    # correct article server-side but JS then overwrites it with a
+                    # different version.  We keep both and pick the one with more text.
+                    _initial_response_body: list[bytes] = []
+
+                    def _on_response(resp):
+                        if not _initial_response_body and resp.request and resp.request.url == url:
+                            try:
+                                _body = resp.body()
+                                _initial_response_body.append(_body)
+                                print(f"[scrape] strategy 6: captured SSR response "
+                                      f"({len(_body)} bytes, "
+                                      f"starts with: {_body[:80]})")
+                            except Exception as e:
+                                print(f"[scrape] strategy 6: SSR capture failed: {e}")
+
+                    page.on("response", _on_response)
+
+                    _parsed  = _urlparse(url)
+                    _homepage = f"{_parsed.scheme}://{_parsed.netloc}/"
+
+                    # Browser strategies handle CF natively (stealth, canvas noise,
+                    # checkbox click).  Homepage warming is not needed and can break
+                    # session-based content routing (e.g. The Guardian serves wrong
+                    # article version after a homepage visit).
+                    print(f"[scrape] strategy 6: warming skipped (native CF bypass)")
+
+                    page.goto(url, timeout=60000, wait_until="domcontentloaded")
+                    time.sleep(4)
+
+                    if _click_cf_checkbox(page):
+                        deadline = time.time() + 30
+                        while time.time() < deadline:
+                            time.sleep(2)
+                            if "just a moment" not in page.title().lower():
+                                print("[scrape] CF challenge cleared")
+                                break
+                        else:
+                            print("[scrape] CF challenge did not clear within 30 s")
+
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=20000)
+                    except Exception as e:
+                        print(f"[scrape] networkidle timeout: {e}")
+
+                    _expand_page_content(page)
+
+                    outer_html = page.content()
+                    frame_map: dict = {}
+                    for frame in page.frames:
+                        try:
+                            if frame.url and frame.url not in ("about:blank", ""):
+                                frame_map[frame.url] = frame.content()
+                            if frame.name:
+                                frame_map.setdefault(frame.name, frame.content())
+                        except Exception:
+                            pass
+
+                    html, inlined = _inline_iframes(outer_html, frame_map, url)
+                    print(f"[scrape] strategy 6: inlined {inlined} iframe(s), "
+                          f"plain_len={len(_html_to_text(html))}")
+
+                    # Prefer the initial SSR response over the JS-modified DOM.
+                    # Some JS-heavy sites (e.g. The Guardian's DCR framework) serve the
+                    # correct article server-side but client-side JS then replaces it
+                    # with a different version.  Use the SSR unless it has minimal text
+                    # (which indicates a SPA loading shell before JS renders content).
+                    if _initial_response_body:
+                        _ssr_html = _initial_response_body[0].decode("utf-8", errors="replace")
+                        _ssr_plain = len(_html_to_text(_ssr_html))
+                        print(f"[scrape] strategy 6: SSR={_ssr_plain}c JS={len(_html_to_text(html))}c")
+                        if _ssr_plain >= 500:
+                            print(f"[scrape] strategy 6: using SSR response")
+                            html = _ssr_html
+                        else:
+                            print(f"[scrape] strategy 6: SSR too short (< 500c), using JS DOM")
+
+                    # Harvest cookies for storage in registry
+                    harvested_cookies = context.cookies()
+                    browser.close()
+
+                plain = _html_to_text(html)
+                if len(plain) > 200 and not _is_blocked(plain):
+                    _pw_result = (html, "text/html", 6, harvested_cookies)
             except Exception as e:
-                print(f"[scrape] networkidle timeout: {e}")
-
-            _expand_page_content(page)
-
-            outer_html = page.content()
-            frame_map: dict = {}
-            for frame in page.frames:
-                try:
-                    if frame.url and frame.url not in ("about:blank", ""):
-                        frame_map[frame.url] = frame.content()
-                    if frame.name:
-                        frame_map.setdefault(frame.name, frame.content())
-                except Exception:
-                    pass
-
-            html, inlined = _inline_iframes(outer_html, frame_map, url)
-            print(f"[scrape] strategy 6: inlined {inlined} iframe(s), "
-                  f"plain_len={len(_html_to_text(html))}")
-
-            # Prefer the initial SSR response over the JS-modified DOM.
-            # Some JS-heavy sites (e.g. The Guardian's DCR framework) serve the
-            # correct article server-side but client-side JS then replaces it
-            # with a different version.  Use the SSR unless it has minimal text
-            # (which indicates a SPA loading shell before JS renders content).
-            if _initial_response_body:
-                _ssr_html = _initial_response_body[0].decode("utf-8", errors="replace")
-                _ssr_plain = len(_html_to_text(_ssr_html))
-                print(f"[scrape] strategy 6: SSR={_ssr_plain}c JS={len(_html_to_text(html))}c")
-                if _ssr_plain >= 500:
-                    print(f"[scrape] strategy 6: using SSR response")
-                    html = _ssr_html
-                else:
-                    print(f"[scrape] strategy 6: SSR too short (< 500c), using JS DOM")
-
-            # Harvest cookies for storage in registry
-            harvested_cookies = context.cookies()
-            browser.close()
-
-        plain = _html_to_text(html)
-        if len(plain) > 200 and not _is_blocked(plain):
-            return html, "text/html", 6, harvested_cookies  # type: ignore[return-value]
+                print(f"[scrape] strategy 6 attempt {_attempt+1} failed: {e}")
+            finally:
+                _kill_orphan_chrome()
+            if _pw_result:
+                return _pw_result  # type: ignore[return-value]
         return None
 
     # ── Strategy 7: nodriver + real Chrome (Private Access Token support) ─────
     # Only real Google Chrome can satisfy CF's PAT attestation.  nodriver drives
     # it via CDP without exposing WebDriver.
     if strategy == 7:
-        import asyncio
-        import nodriver as uc
-
-        chrome_path = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome-stable")
-        if not os.path.isfile(chrome_path):
-            raise FileNotFoundError(
-                f"Chrome not found at {chrome_path!r}; set CHROME_BIN"
-            )
-
-        _nd_browser_args = ["--no-sandbox", "--disable-dev-shm-usage"]
-        if _proxy_url:
-            _nd_browser_args.append(f"--proxy-server={_proxy_url}")
-
-        async def _fetch_with_nodriver() -> tuple[str, list]:
-            browser = await uc.start(
-                browser_executable_path=chrome_path,
-                headless=False,
-                no_sandbox=True,
-                browser_args=_nd_browser_args,
-            )
+        _nd_result = None
+        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+            if proxy:
+                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _proxy_url:
+                    print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
+                elif _attempt == 0:
+                    print("[scrape] proxy pool empty, falling back to direct")
+                else:
+                    break
             try:
-                tab = await browser.get("about:blank")
+                import asyncio
+                import nodriver as uc
 
-                # Inject canvas noise via CDP
-                try:
-                    import nodriver.cdp.page as _cdp_page
-                    await tab.send(
-                        _cdp_page.add_script_to_evaluate_on_new_document(
-                            source=_CANVAS_NOISE_JS
-                        )
+                chrome_path = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome-stable")
+                if not os.path.isfile(chrome_path):
+                    raise FileNotFoundError(
+                        f"Chrome not found at {chrome_path!r}; set CHROME_BIN"
                     )
-                    print("[scrape] nodriver: canvas noise script registered")
-                except Exception as _ce:
-                    print(f"[scrape] nodriver: canvas injection skipped ({_ce})")
 
-                # Inject saved cookies via CDP before any navigation
-                if saved_cookies:
+                _nd_browser_args = ["--no-sandbox", "--disable-dev-shm-usage"]
+                if _proxy_url:
+                    _nd_browser_args.append(f"--proxy-server={_proxy_url}")
+
+                async def _fetch_with_nodriver() -> tuple[str, list]:
+                    browser = await uc.start(
+                        browser_executable_path=chrome_path,
+                        headless=False,
+                        no_sandbox=True,
+                        browser_args=_nd_browser_args,
+                    )
                     try:
-                        import nodriver.cdp.network as _cdp_network
-                        for _c in saved_cookies:
-                            await tab.send(_cdp_network.set_cookie(
-                                name=_c["name"],
-                                value=_c["value"],
-                                domain=_c.get("domain", ""),
-                                path=_c.get("path", "/"),
-                                secure=_c.get("secure", False),
-                                http_only=_c.get("httpOnly", False),
-                            ))
-                        print(f"[scrape] nodriver: injected {len(saved_cookies)} saved cookie(s)")
-                    except Exception as _ci:
-                        print(f"[scrape] nodriver: cookie injection failed: {_ci}")
+                        tab = await browser.get("about:blank")
 
-                _parsed   = _urlparse(url)
-                _homepage = f"{_parsed.scheme}://{_parsed.netloc}/"
+                        # Inject canvas noise via CDP
+                        try:
+                            import nodriver.cdp.page as _cdp_page
+                            await tab.send(
+                                _cdp_page.add_script_to_evaluate_on_new_document(
+                                    source=_CANVAS_NOISE_JS
+                                )
+                            )
+                            print("[scrape] nodriver: canvas noise script registered")
+                        except Exception as _ce:
+                            print(f"[scrape] nodriver: canvas injection skipped ({_ce})")
 
-                # Browser strategies handle CF natively (stealth, canvas noise,
-                # checkbox click).  Homepage warming is not needed and can break
-                # session-based content routing (e.g. The Guardian serves wrong
-                # article version after a homepage visit).
-                print("[scrape] nodriver: warming skipped (native CF bypass)")
+                        # Inject saved cookies via CDP before any navigation
+                        if saved_cookies:
+                            try:
+                                import nodriver.cdp.network as _cdp_network
+                                for _c in saved_cookies:
+                                    await tab.send(_cdp_network.set_cookie(
+                                        name=_c["name"],
+                                        value=_c["value"],
+                                        domain=_c.get("domain", ""),
+                                        path=_c.get("path", "/"),
+                                        secure=_c.get("secure", False),
+                                        http_only=_c.get("httpOnly", False),
+                                    ))
+                                print(f"[scrape] nodriver: injected {len(saved_cookies)} saved cookie(s)")
+                            except Exception as _ci:
+                                print(f"[scrape] nodriver: cookie injection failed: {_ci}")
 
-                await tab.get(url)
-                await asyncio.sleep(5)
+                        _parsed   = _urlparse(url)
+                        _homepage = f"{_parsed.scheme}://{_parsed.netloc}/"
 
-                # Poll until CF clears and real content arrives (up to 90 s)
-                deadline = time.monotonic() + 90
-                while time.monotonic() < deadline:
-                    title         = await tab.evaluate("document.title")
-                    html_snapshot = await tab.get_content()
-                    plain         = _html_to_text(html_snapshot)
-                    if len(plain) > 200 and not _is_blocked(plain):
-                        print(f"[scrape] nodriver: page loaded, title={title!r}")
-                        break
+                        # Browser strategies handle CF natively (stealth, canvas noise,
+                        # checkbox click).  Homepage warming is not needed and can break
+                        # session-based content routing (e.g. The Guardian serves wrong
+                        # article version after a homepage visit).
+                        print("[scrape] nodriver: warming skipped (native CF bypass)")
 
-                    print(f"[scrape] nodriver: waiting for page, title={title!r}")
+                        await tab.get(url)
+                        await asyncio.sleep(5)
 
-                    if "just a moment" in title.lower() or "security" in plain.lower():
-                        rect_json = await tab.evaluate(
-                            "JSON.stringify((() => {"
-                            "  const inp = document.querySelector('input[id^=\"cf-chl-widget\"]');"
-                            "  if (!inp) return null;"
-                            "  let el = inp.parentElement;"
-                            "  while (el) {"
-                            "    const r = el.getBoundingClientRect();"
-                            "    if (r.width > 50 && r.height > 30)"
-                            "      return {x: r.x, y: r.y, w: r.width, h: r.height};"
-                            "    el = el.parentElement;"
-                            "  }"
-                            "  return null;"
-                            "})()"
-                            ")"
-                        )
-                        if isinstance(rect_json, str) and rect_json != "null":
-                            rect = json.loads(rect_json)
-                            cb_x = rect["x"] + 20
-                            cb_y = rect["y"] + rect["h"] / 2
-                            await tab.mouse_click(cb_x, cb_y)
-                            print(f"[scrape] nodriver: clicked checkbox at ({cb_x:.0f}, {cb_y:.0f})")
-                        else:
-                            print("[scrape] nodriver: CF widget not found in DOM yet")
+                        # Poll until CF clears and real content arrives (up to 90 s)
+                        deadline = time.monotonic() + 90
+                        while time.monotonic() < deadline:
+                            title         = await tab.evaluate("document.title")
+                            html_snapshot = await tab.get_content()
+                            plain         = _html_to_text(html_snapshot)
+                            if len(plain) > 200 and not _is_blocked(plain):
+                                print(f"[scrape] nodriver: page loaded, title={title!r}")
+                                break
 
-                    await asyncio.sleep(5)
+                            print(f"[scrape] nodriver: waiting for page, title={title!r}")
 
-                # Expand "read more" / "show full story" buttons
-                _expand_count = await tab.evaluate(_EXPAND_CONTENT_JS)
-                if _expand_count:
-                    print(f"[scrape] nodriver: clicked {_expand_count} expand button(s), waiting for content")
-                    await asyncio.sleep(3)
+                            if "just a moment" in title.lower() or "security" in plain.lower():
+                                rect_json = await tab.evaluate(
+                                    "JSON.stringify((() => {"
+                                    "  const inp = document.querySelector('input[id^=\"cf-chl-widget\"]');"
+                                    "  if (!inp) return null;"
+                                    "  let el = inp.parentElement;"
+                                    "  while (el) {"
+                                    "    const r = el.getBoundingClientRect();"
+                                    "    if (r.width > 50 && r.height > 30)"
+                                    "      return {x: r.x, y: r.y, w: r.width, h: r.height};"
+                                    "    el = el.parentElement;"
+                                    "  }"
+                                    "  return null;"
+                                    "})()"
+                                    ")"
+                                )
+                                if isinstance(rect_json, str) and rect_json != "null":
+                                    rect = json.loads(rect_json)
+                                    cb_x = rect["x"] + 20
+                                    cb_y = rect["y"] + rect["h"] / 2
+                                    await tab.mouse_click(cb_x, cb_y)
+                                    print(f"[scrape] nodriver: clicked checkbox at ({cb_x:.0f}, {cb_y:.0f})")
+                                else:
+                                    print("[scrape] nodriver: CF widget not found in DOM yet")
 
-                # Inline iframes into the final HTML
-                _outer     = await tab.get_content()
-                _frame_map: dict = {}
-                try:
-                    _iframes_js = await tab.evaluate(
-                        "JSON.stringify(Array.from(document.querySelectorAll('iframe')).map(f => ({"
-                        "  src: f.src || '',"
-                        "  name: f.name || '',"
-                        "  id: f.id || '',"
-                        "  html: (() => { try { return f.contentDocument && f.contentDocument.documentElement"
-                        "    ? f.contentDocument.documentElement.outerHTML : ''; } catch(e) { return ''; } })()"
-                        "})))"
-                    )
-                    if isinstance(_iframes_js, str):
-                        for _fi in json.loads(_iframes_js):
-                            if _fi.get("html"):
-                                if _fi.get("src"):
-                                    _frame_map[_fi["src"]] = _fi["html"]
-                                if _fi.get("name"):
-                                    _frame_map.setdefault(_fi["name"], _fi["html"])
-                                if _fi.get("id"):
-                                    _frame_map.setdefault(_fi["id"], _fi["html"])
-                except Exception as _fe:
-                    print(f"[scrape] nodriver: iframe JS collection failed: {_fe}")
+                            await asyncio.sleep(5)
 
-                _inlined_html, _inlined_count = _inline_iframes(_outer, _frame_map, url)
-                print(f"[scrape] nodriver: inlined {_inlined_count} iframe(s)")
+                        # Expand "read more" / "show full story" buttons
+                        _expand_count = await tab.evaluate(_EXPAND_CONTENT_JS)
+                        if _expand_count:
+                            print(f"[scrape] nodriver: clicked {_expand_count} expand button(s), waiting for content")
+                            await asyncio.sleep(3)
 
-                # Harvest cookies for registry storage
-                try:
-                    _cookies_js = await tab.evaluate(
-                        "JSON.stringify(document.cookie.split('; ').map(c => {"
-                        "  const [name, ...rest] = c.split('=');"
-                        "  return {name, value: rest.join('=')};"
-                        "}))"
-                    )
-                    _harvested = json.loads(_cookies_js) if isinstance(_cookies_js, str) else []
-                except Exception as _che:
-                    print(f"[scrape] nodriver: cookie harvest failed: {_che}")
-                    _harvested = []
-                return _inlined_html, _harvested
+                        # Inline iframes into the final HTML
+                        _outer     = await tab.get_content()
+                        _frame_map: dict = {}
+                        try:
+                            _iframes_js = await tab.evaluate(
+                                "JSON.stringify(Array.from(document.querySelectorAll('iframe')).map(f => ({"
+                                "  src: f.src || '',"
+                                "  name: f.name || '',"
+                                "  id: f.id || '',"
+                                "  html: (() => { try { return f.contentDocument && f.contentDocument.documentElement"
+                                "    ? f.contentDocument.documentElement.outerHTML : ''; } catch(e) { return ''; } })()"
+                                "})))"
+                            )
+                            if isinstance(_iframes_js, str):
+                                for _fi in json.loads(_iframes_js):
+                                    if _fi.get("html"):
+                                        if _fi.get("src"):
+                                            _frame_map[_fi["src"]] = _fi["html"]
+                                        if _fi.get("name"):
+                                            _frame_map.setdefault(_fi["name"], _fi["html"])
+                                        if _fi.get("id"):
+                                            _frame_map.setdefault(_fi["id"], _fi["html"])
+                        except Exception as _fe:
+                            print(f"[scrape] nodriver: iframe JS collection failed: {_fe}")
+
+                        _inlined_html, _inlined_count = _inline_iframes(_outer, _frame_map, url)
+                        print(f"[scrape] nodriver: inlined {_inlined_count} iframe(s)")
+
+                        # Harvest cookies for registry storage
+                        try:
+                            _cookies_js = await tab.evaluate(
+                                "JSON.stringify(document.cookie.split('; ').map(c => {"
+                                "  const [name, ...rest] = c.split('=');"
+                                "  return {name, value: rest.join('=')};"
+                                "}))"
+                            )
+                            _harvested = json.loads(_cookies_js) if isinstance(_cookies_js, str) else []
+                        except Exception as _che:
+                            print(f"[scrape] nodriver: cookie harvest failed: {_che}")
+                            _harvested = []
+                        return _inlined_html, _harvested
+                    finally:
+                        browser.stop()
+
+                _nd_html, _nd_cookies = asyncio.run(_fetch_with_nodriver())
+                _nd_plain = _html_to_text(_nd_html)
+                if len(_nd_plain) > 200 and not _is_blocked(_nd_plain):
+                    _nd_result = (_nd_html, "text/html", 7, _nd_cookies)
+            except Exception as e:
+                print(f"[scrape] strategy 7 attempt {_attempt+1} failed: {e}")
             finally:
-                browser.stop()
-
-        html, harvested_cookies = asyncio.run(_fetch_with_nodriver())
-        plain = _html_to_text(html)
-        if len(plain) > 200 and not _is_blocked(plain):
-            return html, "text/html", 7, harvested_cookies  # type: ignore[return-value]
+                _kill_orphan_chrome()
+            if _nd_result:
+                return _nd_result  # type: ignore[return-value]
         return None
 
     raise ValueError(f"Unknown strategy: {strategy}")

@@ -59,8 +59,9 @@ The scraper includes safeguards to prevent resource exhaustion across sequential
 | Feature | Description |
 |---------|-------------|
 | **Chrome cleanup** | Orphan `chrome` processes are force-killed after every browser strategy (6-7) and at the start of each `scrape_as_html` call, preventing memory leaks from accumulating |
-| **Per-strategy timeout** | Each strategy runs with a timeout: 30s for HTTP strategies (1-5), 90s for browser strategies (6-7). A hung strategy doesn't block the remaining strategies |
-| **Auto-retry with proxy** | If a browser strategy fails without proxy, it's retried once with proxy before moving to the next strategy |
+| **Per-strategy timeout** | Each strategy runs with a timeout: 30s for HTTP strategies (1-5), 90s for browser strategies (6-7). When proxy is enabled, timeout is multiplied by `PROXY_MAX_RETRY` (5) to accommodate retries |
+| **Proxy retry with removal** | Each strategy tries up to 5 different proxies from the pool before giving up. Failed proxies are permanently removed from the pool so they're never picked again by subsequent strategies or calls |
+| **Auto-retry with proxy (browser)** | If a browser strategy fails without proxy, it's retried once with proxy before moving to the next strategy |
 | **Expandable content detection** | If HTTP content looks truncated ("read more" buttons), the scraper auto-upgrades to browser strategies |
 | **Domain registry** | PostgreSQL-backed cache remembers the winning strategy per domain, reuses harvested cookies, and skips failed strategies on subsequent calls |
 
