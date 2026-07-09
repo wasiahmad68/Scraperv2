@@ -765,13 +765,19 @@ def _run_strategy(
     _proxy_url = None
 
     if strategy == 1:
-        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+        for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
-                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _attempt < _PROXY_MAX_RETRY:
+                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                else:
+                    print("[scrape] all proxies failed, trying direct")
+                    _proxy_url = None
                 if _proxy_url:
                     print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
                 elif _attempt == 0:
                     print("[scrape] proxy pool empty, falling back to direct")
+                elif _attempt >= _PROXY_MAX_RETRY:
+                    pass
                 else:
                     break
             try:
@@ -786,13 +792,19 @@ def _run_strategy(
 
     # ── Strategy 2: Facebook crawler UA ──────────────────────────────────────
     if strategy == 2:
-        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+        for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
-                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _attempt < _PROXY_MAX_RETRY:
+                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                else:
+                    print("[scrape] all proxies failed, trying direct")
+                    _proxy_url = None
                 if _proxy_url:
                     print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
                 elif _attempt == 0:
                     print("[scrape] proxy pool empty, falling back to direct")
+                elif _attempt >= _PROXY_MAX_RETRY:
+                    pass
                 else:
                     break
             try:
@@ -807,13 +819,19 @@ def _run_strategy(
 
     # ── Strategy 3: Googlebot UA ──────────────────────────────────────────────
     if strategy == 3:
-        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+        for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
-                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _attempt < _PROXY_MAX_RETRY:
+                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                else:
+                    print("[scrape] all proxies failed, trying direct")
+                    _proxy_url = None
                 if _proxy_url:
                     print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
                 elif _attempt == 0:
                     print("[scrape] proxy pool empty, falling back to direct")
+                elif _attempt >= _PROXY_MAX_RETRY:
+                    pass
                 else:
                     break
             try:
@@ -828,13 +846,19 @@ def _run_strategy(
 
     # ── Strategy 4: cloudscraper (Cloudflare JS challenges) ──────────────────
     if strategy == 4:
-        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+        for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
-                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _attempt < _PROXY_MAX_RETRY:
+                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                else:
+                    print("[scrape] all proxies failed, trying direct")
+                    _proxy_url = None
                 if _proxy_url:
                     print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
                 elif _attempt == 0:
                     print("[scrape] proxy pool empty, falling back to direct")
+                elif _attempt >= _PROXY_MAX_RETRY:
+                    pass
                 else:
                     break
             try:
@@ -853,13 +877,19 @@ def _run_strategy(
 
     # ── Strategy 5: curl_cffi with real TLS fingerprint ──────────────────────
     if strategy == 5:
-        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+        for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
-                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _attempt < _PROXY_MAX_RETRY:
+                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                else:
+                    print("[scrape] all proxies failed, trying direct")
+                    _proxy_url = None
                 if _proxy_url:
                     print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
                 elif _attempt == 0:
                     print("[scrape] proxy pool empty, falling back to direct")
+                elif _attempt >= _PROXY_MAX_RETRY:
+                    pass
                 else:
                     break
             try:
@@ -880,13 +910,19 @@ def _run_strategy(
     # which can bypass CF Turnstile entirely when cf_clearance is still valid.
     if strategy == 6:
         _pw_result = None
-        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+        for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
-                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _attempt < _PROXY_MAX_RETRY:
+                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                else:
+                    print("[scrape] all proxies failed, trying direct")
+                    _proxy_url = None
                 if _proxy_url:
                     print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
                 elif _attempt == 0:
                     print("[scrape] proxy pool empty, falling back to direct")
+                elif _attempt >= _PROXY_MAX_RETRY:
+                    pass
                 else:
                     break
             try:
@@ -1039,13 +1075,19 @@ def _run_strategy(
     # it via CDP without exposing WebDriver.
     if strategy == 7:
         _nd_result = None
-        for _attempt in range(_PROXY_MAX_RETRY if proxy else 1):
+        for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
-                _proxy_url = _rotate_proxy(failed=_proxy_url)
+                if _attempt < _PROXY_MAX_RETRY:
+                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                else:
+                    print("[scrape] all proxies failed, trying direct")
+                    _proxy_url = None
                 if _proxy_url:
                     print(f"[scrape] proxy attempt {_attempt+1}: {_proxy_url.split('@')[-1]}")
                 elif _attempt == 0:
                     print("[scrape] proxy pool empty, falling back to direct")
+                elif _attempt >= _PROXY_MAX_RETRY:
+                    pass
                 else:
                     break
             try:
