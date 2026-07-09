@@ -898,12 +898,15 @@ class APIMixin:
             body["browser"] = self.api_browser
 
         cb = callback or self.parse
+        def _api_wrapper(response):
+            response._url = response.meta.get("original_url", response._url)
+            return cb(response)
         return scrapy.Request(
             url=self.api_base,
             method="POST",
             body=json.dumps(body),
             headers={"Content-Type": "application/json"},
-            callback=cb,
+            callback=_api_wrapper,
             meta={"original_url": url, **kwargs.pop("meta", {})},
             **kwargs,
         )
