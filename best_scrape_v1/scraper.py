@@ -765,10 +765,12 @@ def _run_strategy(
     _proxy_url = None
 
     if strategy == 1:
+        _proxy_to_remove = None
         for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
                 if _attempt < _PROXY_MAX_RETRY:
-                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                    _proxy_url = _rotate_proxy(failed=_proxy_to_remove)
+                    _proxy_to_remove = None
                 else:
                     print("[scrape] all proxies failed, trying direct")
                     _proxy_url = None
@@ -786,16 +788,21 @@ def _run_strategy(
                 print(f"[scrape] strategy 1 status: {r.status_code}")
                 if r.status_code == 200:
                     return _resolve_response(r, 1)
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as _te:
+                print(f"[scrape] strategy 1 attempt {_attempt+1} transport error: {_te}")
+                _proxy_to_remove = _proxy_url
             except Exception as e:
                 print(f"[scrape] strategy 1 attempt {_attempt+1} failed: {e}")
         return None
 
     # ── Strategy 2: Facebook crawler UA ──────────────────────────────────────
     if strategy == 2:
+        _proxy_to_remove = None
         for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
                 if _attempt < _PROXY_MAX_RETRY:
-                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                    _proxy_url = _rotate_proxy(failed=_proxy_to_remove)
+                    _proxy_to_remove = None
                 else:
                     print("[scrape] all proxies failed, trying direct")
                     _proxy_url = None
@@ -813,16 +820,21 @@ def _run_strategy(
                 print(f"[scrape] strategy 2 status: {r.status_code}")
                 if r.status_code == 200:
                     return _resolve_response(r, 2)
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as _te:
+                print(f"[scrape] strategy 2 attempt {_attempt+1} transport error: {_te}")
+                _proxy_to_remove = _proxy_url
             except Exception as e:
                 print(f"[scrape] strategy 2 attempt {_attempt+1} failed: {e}")
         return None
 
     # ── Strategy 3: Googlebot UA ──────────────────────────────────────────────
     if strategy == 3:
+        _proxy_to_remove = None
         for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
                 if _attempt < _PROXY_MAX_RETRY:
-                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                    _proxy_url = _rotate_proxy(failed=_proxy_to_remove)
+                    _proxy_to_remove = None
                 else:
                     print("[scrape] all proxies failed, trying direct")
                     _proxy_url = None
@@ -840,16 +852,21 @@ def _run_strategy(
                 print(f"[scrape] strategy 3 status: {r.status_code}")
                 if r.status_code == 200:
                     return _resolve_response(r, 3)
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as _te:
+                print(f"[scrape] strategy 3 attempt {_attempt+1} transport error: {_te}")
+                _proxy_to_remove = _proxy_url
             except Exception as e:
                 print(f"[scrape] strategy 3 attempt {_attempt+1} failed: {e}")
         return None
 
     # ── Strategy 4: cloudscraper (Cloudflare JS challenges) ──────────────────
     if strategy == 4:
+        _proxy_to_remove = None
         for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
                 if _attempt < _PROXY_MAX_RETRY:
-                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                    _proxy_url = _rotate_proxy(failed=_proxy_to_remove)
+                    _proxy_to_remove = None
                 else:
                     print("[scrape] all proxies failed, trying direct")
                     _proxy_url = None
@@ -871,16 +888,21 @@ def _run_strategy(
                 print(f"[scrape] strategy 4 status: {r.status_code}")
                 if r.status_code == 200:
                     return _resolve_response(r, 4)
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as _te:
+                print(f"[scrape] strategy 4 attempt {_attempt+1} transport error: {_te}")
+                _proxy_to_remove = _proxy_url
             except Exception as e:
                 print(f"[scrape] strategy 4 attempt {_attempt+1} failed: {e}")
         return None
 
     # ── Strategy 5: curl_cffi with real TLS fingerprint ──────────────────────
     if strategy == 5:
+        _proxy_to_remove = None
         for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
                 if _attempt < _PROXY_MAX_RETRY:
-                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                    _proxy_url = _rotate_proxy(failed=_proxy_to_remove)
+                    _proxy_to_remove = None
                 else:
                     print("[scrape] all proxies failed, trying direct")
                     _proxy_url = None
@@ -910,10 +932,12 @@ def _run_strategy(
     # which can bypass CF Turnstile entirely when cf_clearance is still valid.
     if strategy == 6:
         _pw_result = None
+        _proxy_to_remove = None
         for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
                 if _attempt < _PROXY_MAX_RETRY:
-                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                    _proxy_url = _rotate_proxy(failed=_proxy_to_remove)
+                    _proxy_to_remove = None
                 else:
                     print("[scrape] all proxies failed, trying direct")
                     _proxy_url = None
@@ -1062,6 +1086,9 @@ def _run_strategy(
                 plain = _html_to_text(html)
                 if len(plain) > 200 and not _is_blocked(plain):
                     _pw_result = (html, "text/html", 6, harvested_cookies)
+            except (ConnectionAbortedError, ConnectionResetError, OSError) as _te:
+                print(f"[scrape] strategy 6 attempt {_attempt+1} transport error: {_te}")
+                _proxy_to_remove = _proxy_url
             except Exception as e:
                 print(f"[scrape] strategy 6 attempt {_attempt+1} failed: {e}")
             finally:
@@ -1075,10 +1102,12 @@ def _run_strategy(
     # it via CDP without exposing WebDriver.
     if strategy == 7:
         _nd_result = None
+        _proxy_to_remove = None
         for _attempt in range((_PROXY_MAX_RETRY + 1) if proxy else 1):
             if proxy:
                 if _attempt < _PROXY_MAX_RETRY:
-                    _proxy_url = _rotate_proxy(failed=_proxy_url)
+                    _proxy_url = _rotate_proxy(failed=_proxy_to_remove)
+                    _proxy_to_remove = None
                 else:
                     print("[scrape] all proxies failed, trying direct")
                     _proxy_url = None
@@ -1248,6 +1277,9 @@ def _run_strategy(
                 _nd_plain = _html_to_text(_nd_html)
                 if len(_nd_plain) > 200 and not _is_blocked(_nd_plain):
                     _nd_result = (_nd_html, "text/html", 7, _nd_cookies)
+            except (ConnectionAbortedError, ConnectionResetError, OSError) as _te:
+                print(f"[scrape] strategy 7 attempt {_attempt+1} transport error: {_te}")
+                _proxy_to_remove = _proxy_url
             except Exception as e:
                 print(f"[scrape] strategy 7 attempt {_attempt+1} failed: {e}")
             finally:
